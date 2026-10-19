@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Football Matches Today | Football Live — مباريات اليوم</title>
+<meta name="description" content="Live football scores and today's fixtures in your time zone. جدول مباريات اليوم والغد والأمس مع النتائج المباشرة.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta property="og:title" content="Live Football Matches Today | Football Live">
+<meta property="og:description" content="Live football scores and today's fixtures in your time zone.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main class="wrap">
+  <section class="card">
+    <div id="tzbox"></div>
+    <div class="tabs"><span class="ttl" id="ttl"></span>
+      <button class="tab livebtn" id="liveBtn"></button>
+      <button class="tab" data-day="-1"></button>
+      <button class="tab" data-day="0"></button>
+      <button class="tab" data-day="1"></button>
+      <input id="search" type="search">
+    </div>
+    <div id="list" class="list"></div>
+    <div class="more"><button id="more" class="btn" hidden></button></div>
+  </section>
+  <section class="card" id="newsCard" hidden>
+    <div class="tabs"><span class="ttl dark" id="nttl"></span></div>
+    <div id="news" class="news"></div>
+  </section>
+  <section class="card pad prose" id="intro">
+    <h2>Live football fixtures, scores and match times</h2>
+    <p>Football Live lists the day's football matches with live scores, results and kick-off times converted to your time zone. Use the tabs for yesterday, today and tomorrow, the Live now button to see only games in progress, and the search box to find a team or competition. Open any match for its summary and kick-off times across several countries.</p>
+    <p>New to following European football? Read our guides: <a href="guide-european-leagues">Europe's top leagues explained</a>, <a href="guide-watch-football-legally">how to watch football legally</a> and <a href="guide-match-times-time-zones">match times and time zones</a>.</p>
+  </section>
+</main>
+<div id="ftr"></div>
+<script src="lib.js"></script>
+<script>
+(async () => {
+  await boot();
+  const q = new URLSearchParams(location.search);
+  // Optional: use another page (e.g. a static landing page) as the real homepage.
+  if (S.homeUrl && q.get("home") !== "0" && /^(https?:\/\/|[\w-]+\.html?$)/.test(S.homeUrl) && S.homeUrl !== "index.html") { location.replace(S.homeUrl); return; }
+  let day = +(q.get("day") ?? S.defaultDay), page = 1, liveOnly = q.get("live") === "1";
+  seo({ title: t("today") + " | " + S.siteName, path: "", ld: { "@context": "https://schema.org", "@type": "WebSite", name: S.siteName, url: S.siteUrl, inLanguage: ["en", "ar"] } });
+  const names = { "-1": t("yesterday"), 0: t("today"), 1: t("tomorrow") };
+  document.querySelectorAll(".tab").forEach(b => { b.textContent = names[b.dataset.day]; b.onclick = () => { day = +b.dataset.day; liveOnly = false; page = 1; render(); }; });
+  $("#liveBtn").onclick = () => { liveOnly = !liveOnly; page = 1; render(); };
+  $("#search").placeholder = t("search");
+  $("#search").oninput = () => { page = 1; render(); };
+  $("#tzbox").innerHTML = tzSelect();
+  $("#tzsel").onchange = e => { UI.tz = e.target.value; saveUI(); render(); };
+  $("#more").textContent = t("more");
+  $("#more").onclick = () => { page++; render(); };
+
+  function render() {
+    const liveCount = D.matches.filter(m => status(m) === "live").length;
+    $("#liveBtn").textContent = "● " + t("liveNow") + " (" + liveCount + ")";
+    $("#liveBtn").classList.toggle("on", liveOnly);
+    document.querySelectorAll(".tab[data-day]").forEach(b => b.classList.toggle("on", !liveOnly && +b.dataset.day === day));
+    const key = dayKeyOffset(day), s = $("#search").value.trim().toLowerCase();
+    // "Live now" ignores the day tabs and shows every match in progress.
+    const ms = D.matches.filter(m => liveOnly ? status(m) === "live" : dayKey(+new Date(m.start)) === key).filter(m => {
+      if (!s) return true;
+      return [byId(D.teams, m.home).name, byId(D.teams, m.home).nameEn, byId(D.teams, m.away).name, byId(D.teams, m.away).nameEn,
+        byId(D.leagues, m.league).name, byId(D.leagues, m.league).nameEn].join(" ").toLowerCase().includes(s);
+    }).sort((a, b) => +new Date(a.start) - +new Date(b.start));
+    if (!ms.length) { $("#list").innerHTML = `<p class="empty">${t(liveOnly ? "noLive" : "none")}</p>`; $("#more").hidden = true; return; }
+    const shown = ms.slice(0, page * S.pageSize), groups = {};
+    shown.forEach(m => (groups[m.league] ||= []).push(m));
+    $("#list").innerHTML = Object.entries(groups).map(([id, arr]) => `<div class="league">${esc(nm(byId(D.leagues, id)))}</div>${arr.map(card).join("")}`).join("");
+    $("#more").hidden = shown.length >= ms.length;
+  }
+  $("#ttl").textContent = t("schedule");
+  $("#nttl").textContent = t("news");
+  const posts = [...(D.news || [])].sort((a, b) => +new Date(b.date) - +new Date(a.date));
+  $("#newsCard").hidden = !posts.length;
+  $("#news").innerHTML = posts.length ? posts.map(p => `<a class="post" href="news?id=${p.id}">
+      ${safeUrl(p.image) ? `<img loading="lazy" src="${esc(p.image)}" alt="">` : ""}<b>${esc(L === "en" && p.titleEn ? p.titleEn : p.title)}</b>
+      <small>${new Date(p.date).toLocaleDateString(locale(), { timeZone: TZ() })}</small></a>`).join("") : `<p class="empty">${t("nonews")}</p>`;
+  render();
+  setInterval(render, 30000); // statuses update automatically
+  setInterval(async () => { await refreshApi(); render(); }, 60000);
+})();
+</script>
+</body>
+</html>

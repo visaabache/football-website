@@ -1,0 +1,7 @@
+# Static site (the pages in ./dist), deployed as a Worker with static assets.
+# Build first: node tools/build.js   then deploy: npx wrangler deploy
+name = "football-live"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./dist"

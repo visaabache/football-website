@@ -1,0 +1,18 @@
+name = "football-live-api"
+main = "index.js"
+compatibility_date = "2025-01-01"
+
+# Enable once football-live.site is added to Cloudflare (then set API URL to /api/data):
+workers_dev = true
+preview_urls = false
+# routes = [{ pattern = "football-live.site/api/*", zone_name = "football-live.site" }]
+
+# 1) npx wrangler kv namespace create DATA   -> paste the id below
+# 2) npx wrangler secret put FD_TOKEN         -> paste your football-data.org token
+# 3) npx wrangler deploy
+[[kv_namespaces]]
+binding = "DATA"
+id = "0f17ea640837460b9507560d81a21e07"
+
+[triggers]
+crons = ["*/2 * * * *"]

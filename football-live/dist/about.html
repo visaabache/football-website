@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About | Football Live</title>
+<meta name="description" content="About Football Live: live football fixtures, scores and match times in your time zone.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main class="wrap"><article class="card pad prose">
+<h1>About Football Live</h1>
+<p>Football Live is an independent website that helps football fans find out what is on, when, and how it ended. We publish daily fixtures, live scores and results for the major competitions, with kick-off times converted to the time zone you choose.</p>
+<h2>What you will find here</h2>
+<p>A schedule for yesterday, today and tomorrow, a Live now filter that shows only matches in progress, and a page for every match with its competition, teams, kick-off times in several countries and a short summary. We also publish written guides about how leagues work and how to follow football from anywhere.</p>
+<h2>Where our data comes from</h2>
+<p>Fixtures and scores are retrieved automatically from football-data.org and refreshed throughout the day. Scores can be a minute or two behind the stadium, so please do not use this site for betting or time-critical decisions.</p>
+<h2>Watching matches</h2>
+<p>We do not host or link to unlicensed video streams. Where we link to a broadcaster, it is the official rights holder.</p>
+<h2>Contact</h2>
+<p>Corrections and questions are welcome. See our <a href="contact">contact page</a>.</p>
+</article></main>
+<div id="ftr"></div>
+<script src="lib.js"></script>
+<script>
+(async () => {
+  await boot({ static: true });
+  seo({ title: "About | Football Live", desc: "About Football Live: live football fixtures, scores and match times in your time zone.", path: "about", type: "article" });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Match</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main class="wrap" id="main"></main>
+<div id="ftr"></div>
+<script src="lib.js"></script>
+<script>
+(async () => {
+  const q = new URLSearchParams(location.search);
+  await boot({ embed: q.get("embed") === "1" });
+  const m = D.matches.find(x => x.id == q.get("id"));
+  const main = $("#main");
+  if (!m) { main.innerHTML = `<p class="empty card">${t("notfound")}</p><p><a href="index.html">${t("back")}</a></p>`; return; }
+  const h = byId(D.teams, m.home), a = byId(D.teams, m.away), lg = byId(D.leagues, m.league);
+  seo({ title: `${nm(h)} vs ${nm(a)} — ${nm(lg)} | ${S.siteName}`, path: "match?id=" + m.id, type: "article",
+    desc: `${nm(h)} vs ${nm(a)}, ${nm(lg)}: ${new Date(m.start).toLocaleString(locale(), { timeZone: TZ(), dateStyle: "medium", timeStyle: "short" })}. ${t("watch")} / live score.`,
+    ld: { "@context": "https://schema.org", "@type": "SportsEvent", name: `${nm(h)} vs ${nm(a)}`, startDate: m.start, sport: "Soccer",
+      homeTeam: { "@type": "SportsTeam", name: nm(h) }, awayTeam: { "@type": "SportsTeam", name: nm(a) }, superEvent: { "@type": "SportsEvent", name: nm(lg) },
+      eventStatus: status(m) === "finished" ? "https://schema.org/EventCompleted" : "https://schema.org/EventScheduled" } });
+  if (UI.embed) { const r = document.createElement("meta"); r.name = "robots"; r.content = "noindex"; document.head.append(r); }
+  const servers = (m.servers || []).filter(s => safeUrl(s.url));
+
+  const dateStr = () => new Date(m.start).toLocaleDateString(locale(), { timeZone: TZ(), dateStyle: "full" });
+  const tzName = () => COUNTRIES[TZ()] ? COUNTRIES[TZ()][L === "ar" ? 0 : 1] : TZ();
+  const blurbTitle = () => L === "ar" ? `ملخص مباراة ${nm(h)} و${nm(a)}` : `${nm(h)} vs ${nm(a)}: match summary`;
+  function blurb(st, hasScore) {
+    const start = +new Date(m.start), hs = m.homeScore ?? 0, as = m.awayScore ?? 0;
+    const pen = m.penH !== undefined && m.penH !== "" && m.penH !== null;
+    if (L === "ar") {
+      if (st === "finished") return `انتهت مباراة ${nm(h)} و${nm(a)} في ${nm(lg)} بنتيجة ${hs} - ${as}${pen ? ` (وبركلات الترجيح ${m.penH} - ${m.penA})` : ""}. أقيمت المباراة يوم ${dateStr()} وانطلقت الساعة ${fmtTime(start)} بتوقيت ${tzName()}.`;
+      if (st === "live") return `تُلعب الآن مباراة ${nm(h)} و${nm(a)} في ${nm(lg)}، والنتيجة الحالية ${hs} - ${as}. تتحدث الصفحة تلقائيا مع تغير النتيجة.`;
+      return `يلتقي ${nm(h)} مع ${nm(a)} في ${nm(lg)} يوم ${dateStr()} الساعة ${fmtTime(start)} بتوقيت ${tzName()}. تتحدث حالة المباراة والنتيجة تلقائيا على هذه الصفحة عند انطلاقها.`;
+    }
+    if (st === "finished") return `${nm(h)} and ${nm(a)} played in the ${nm(lg)} on ${dateStr()}, kicking off at ${fmtTime(start)} (${tzName()} time). The match ended ${hs}-${as}${pen ? `, with ${m.penH}-${m.penA} in the penalty shoot-out` : ""}.`;
+    if (st === "live") return `${nm(h)} and ${nm(a)} are playing now in the ${nm(lg)}. The current score is ${hs}-${as}. This page updates automatically as the score changes.`;
+    return `${nm(h)} meet ${nm(a)} in the ${nm(lg)} on ${dateStr()}. Kick-off is at ${fmtTime(start)} (${tzName()} time); the table below shows the time in other countries. The status and score update automatically once the match begins.`;
+  }
+
+  function view() {
+    const st = status(m), start = +new Date(m.start);
+    const hasScore = m.homeScore !== undefined && m.homeScore !== "" && m.homeScore !== null;
+    const score = hasScore || st === "live" || st === "finished" ? `${esc(m.homeScore ?? 0)} - ${esc(m.awayScore ?? 0)}` : fmtTime(start);
+    const pens = (m.penH !== undefined && m.penH !== "" && m.penH !== null) ? `<div class="pen">(${esc(m.penH)} - ${esc(m.penA)}) ${t("pens")}</div>` : "";
+    const left = start - Date.now();
+    const cd = left > 0 ? `<div class="cd">${t("startsIn")} ${Math.floor(left / 3600e3)}:${String(Math.floor(left % 3600e3 / 60000)).padStart(2, "0")}</div>` : "";
+    main.innerHTML = `<section class="card pad">
+      <div class="league">${esc(nm(lg))}</div>
+      <div class="hero ${st}"><div class="side">${badge(h)}<b>${esc(nm(h))}</b></div>
+        <div class="mid big">${score}${pens}<small class="st">${t(st)}</small>${cd}</div>
+        <div class="side">${badge(a)}<b>${esc(nm(a))}</b></div></div>
+      <div class="meta">${m.channel ? `<span>📺 ${t("channel")}: ${esc(m.channel)}</span>` : ""}${m.commentator ? `<span>🎙 ${t("commentator")}: ${esc(m.commentator)}</span>` : ""}
+        <span>${new Date(start).toLocaleDateString(locale(), { timeZone: TZ(), dateStyle: "full" })} — ${fmtTime(start)}</span></div>
+      <section class="ptext"><h2>${blurbTitle()}</h2><p>${blurb(st, hasScore)}</p></section>
+      ${S.adTop ? `<div class="ad">${S.adTop}</div>` : ""}
+      <div class="player" id="player"></div>
+      <div class="servers" id="servers"></div>
+      ${S.adBottom ? `<div class="ad">${S.adBottom}</div>` : ""}
+      <h3>${t("times")}</h3>
+      <div class="times">${S.countries.map(z => `<div><span>${esc(COUNTRIES[z] ? COUNTRIES[z][L === "ar" ? 0 : 1] : z)}</span><b>${fmtTime(start, z)}</b></div>`).join("")}</div>
+      ${UI.embed ? "" : `<h3>${t("embed")}</h3><textarea class="code" readonly onclick="this.select()">&lt;iframe src="${esc(location.origin + location.pathname)}?id=${m.id}&embed=1" width="100%" height="180" style="border:0"&gt;&lt;/iframe&gt;</textarea>`}
+    </section>`;
+    const pl = $("#player");
+    if (servers.length && st !== "upcoming") {
+      $("#servers").innerHTML = servers.map((s, i) => `<button class="btn ${i ? "alt" : ""}" data-i="${i}">${esc(s.name || "Server " + (i + 1))}</button>`).join("");
+      const load = i => {
+        pl.innerHTML = `<iframe src="${esc(safeUrl(servers[i].url))}" allowfullscreen referrerpolicy="no-referrer" loading="lazy"
+          sandbox="allow-scripts allow-same-origin allow-presentation allow-popups-to-escape-sandbox"></iframe>`;
+        document.querySelectorAll("#servers .btn").forEach((b, j) => b.classList.toggle("alt", j !== i));
+      };
+      document.querySelectorAll("#servers .btn").forEach(b => b.onclick = () => load(+b.dataset.i));
+      load(0);
+    } else pl.hidden = true; // no embedded stream: do not show an empty player
+  }
+  let last = status(m); view();
+  setInterval(() => { const s = status(m); if (s !== last) { last = s; view(); } }, 15000);
+})();
+</script>
+</body>
+</html>

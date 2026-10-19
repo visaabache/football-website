@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Football Match Times and Time Zones Explained | Football Live</title>
+<meta name="description" content="Why kick-off times differ between countries, how daylight saving time shifts fixtures twice a year, and how to read match times on this site.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main class="wrap"><article class="card pad prose">
+<h1>Football Match Times and Time Zones Explained</h1>
+<p>A match announced for 20:45 may be at a very different time of day for you. Kick-offs are normally set in the local time of the stadium, so fans in other countries have to convert them.</p>
+<h2>UTC as a common reference</h2>
+<p>Computer systems store times in UTC, a global reference that does not change with the seasons. Our schedule stores every kick-off in UTC and converts it to the time zone you select, which avoids mistakes when clocks change.</p>
+<h2>Daylight saving time</h2>
+<p>Most European countries move their clocks forward on the last Sunday of March and back on the last Sunday of October. During that period the gap between Europe and countries that do not change their clocks grows or shrinks by an hour. A fixture that is fixed to the same local time can therefore move by an hour for fans elsewhere.</p>
+<h2>Late-night matches</h2>
+<p>Some matches start after 23:00 in the region where you live. On this site the day changes at 02:00, so a game that starts at 23:30 still appears on the day it was scheduled instead of jumping to the next one.</p>
+<h2>Kick-off in several countries</h2>
+<p>Each match page shows the kick-off time in several countries, which is useful if you follow a team with friends and family abroad. The status of a match is updated automatically as it moves from "not started" to "starting soon", "live" and "full time".</p>
+<h2>Postponements</h2>
+<p>Matches can be moved for weather, security or scheduling reasons. Our data is refreshed automatically, but always check with the league or your broadcaster close to kick-off.</p>
+<p><a href="guides">All guides</a></p>
+</article></main>
+<div id="ftr"></div>
+<script src="lib.js"></script>
+<script>
+(async () => {
+  await boot({ static: true });
+  seo({ title: "Football Match Times and Time Zones Explained | Football Live", desc: "Why kick-off times differ between countries, how daylight saving time shifts fixtures twice a year, and how to read match times on this site.", path: "guide-match-times-time-zones", type: "article" });
+})();
+</script>
+</body>
+</html>

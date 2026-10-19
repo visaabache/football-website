@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="hdr"></div>
+<main class="wrap">
+  <section class="card pad">
+    <p class="note" id="note"></p>
+    <div class="tabs" id="tabs"></div>
+    <div id="body"></div>
+  </section>
+</main>
+<div id="ftr"></div>
+<script src="lib.js"></script>
+<script>
+(async () => {
+  await boot({ admin: true });
+  const A = {
+    ar: { matches: "المباريات", teams: "الفرق", leagues: "البطولات", settings: "الإعدادات", data: "النسخ الاحتياطي", news: "الأخبار", ttl: "العنوان", ttlEn: "العنوان بالإنجليزية", body: "النص", bodyEn: "النص بالإنجليزية", img: "رابط الصورة", card: "بطاقة مباراة (اختياري)", social: "روابط التواصل (X / فيسبوك / يوتيوب / تيليجرام)", save: "حفظ", del: "حذف", edit: "تعديل", new: "جديد",
+      league: "البطولة", home: "المضيف", away: "الضيف", start: "بداية المباراة", end: "نهاية (اختياري)", hs: "نتيجة المضيف", as: "نتيجة الضيف", ph: "ترجيح المضيف", pa: "ترجيح الضيف",
+      channel: "القناة", comm: "المعلق", servers: "سيرفرات البث (سطر لكل سيرفر: الاسم | الرابط)", name: "الاسم", nameEn: "الاسم بالإنجليزية", logo: "رابط الشعار",
+      siteName: "اسم الموقع", lang: "اللغة الافتراضية", theme: "المظهر الافتراضي", brand: "اللون الرئيسي", accent: "اللون الثانوي", tz: "المنطقة الزمنية", dur: "مدة المباراة (دقيقة)",
+      soon: "\"ستبدأ بعد قليل\" قبل (دقيقة)", shift: "تغيير اليوم بعد الساعة", page: "عدد المباريات في كل تحميل", homeUrl: "صفحة رئيسية مخصصة (تحويل، مثال: landing.html)",
+      countries: "الدول المعروضة في صفحة المباراة", adTop: "إعلان أعلى البث (HTML)", adBottom: "إعلان أسفل البث (HTML)", exp: "تصدير data.json", imp: "استيراد", reset: "إعادة البيانات التجريبية",
+      note: "التعديلات تُحفظ في متصفحك فقط. لنشرها للجميع: صدّر data.json وضعه في المستودع ثم ارفعه إلى GitHub.", confirm: "متأكد؟" },
+    en: { matches: "Matches", teams: "Teams", leagues: "Leagues", settings: "Settings", data: "Backup", news: "News", ttl: "Title", ttlEn: "English title", body: "Body", bodyEn: "English body", img: "Image URL", card: "Match card (optional)", social: "Social links (X / Facebook / YouTube / Telegram)", save: "Save", del: "Delete", edit: "Edit", new: "New",
+      league: "League", home: "Home", away: "Away", start: "Kick-off", end: "End (optional)", hs: "Home score", as: "Away score", ph: "Home pens", pa: "Away pens",
+      channel: "Channel", comm: "Commentator", servers: "Stream servers (one per line: Name | URL)", name: "Name", nameEn: "English name", logo: "Logo URL",
+      siteName: "Site name", lang: "Default language", theme: "Default theme", brand: "Brand colour", accent: "Accent colour", tz: "Time zone", dur: "Match length (min)",
+      soon: "\"Starting soon\" window (min)", shift: "Day changes after hour", page: "Matches per load", homeUrl: "Custom homepage (redirect, e.g. landing.html)",
+      countries: "Countries shown on match page", adTop: "Ad above player (HTML)", adBottom: "Ad below player (HTML)", exp: "Export data.json", imp: "Import", reset: "Reset to sample data",
+      note: "Changes are saved in this browser only. To publish: export data.json, put it in the repo root, push to GitHub.", confirm: "Sure?" },
+  }[L];
+  $("#note").textContent = A.note;
+  let tab = "matches", editing = null;
+  const persist = () => { D.settings = S; saveData(D); };
+  const nextId = arr => Math.max(0, ...arr.map(x => x.id)) + 1;
+  const f = (label, name, val = "", type = "text", extra = "") => `<label>${label}<input name="${name}" type="${type}" value="${esc(val)}" ${extra}></label>`;
+  const sel = (label, name, arr, val) => `<label>${label}<select name="${name}">${arr.map(o => `<option value="${o.id}" ${o.id == val ? "selected" : ""}>${esc(nm(o))}</option>`).join("")}</select></label>`;
+  const tzOpts = (val) => Object.keys(COUNTRIES).map(z => `<option value="${z}" ${z === val ? "selected" : ""}>${COUNTRIES[z][L === "ar" ? 0 : 1]}</option>`).join("");
+
+  function show() {
+    $("#tabs").innerHTML = ["matches", "news", "teams", "leagues", "settings", "data"].map(k => `<button class="tab ${k === tab ? "on" : ""}" data-t="${k}" style="background:var(--brand)">${A[k]}</button>`).join("");
+    document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => { tab = b.dataset.t; editing = null; show(); });
+    ({ matches, news, teams: simple("teams"), leagues: simple("leagues"), settings, data })[tab]();
+  }
+
+  function matches() {
+    const m = editing ?? { servers: [], start: new Date(Math.ceil(Date.now() / 36e5) * 36e5).toISOString() };
+    const srv = (m.servers || []).map(s => `${s.name} | ${s.url}`).join("\n");
+    $("#body").innerHTML = `<form id="f" class="grid">
+      ${sel(A.league, "league", D.leagues, m.league)}${sel(A.home, "home", D.teams, m.home)}${sel(A.away, "away", D.teams, m.away)}
+      ${f(A.start + " (" + S.tz + ")", "start", utcToInput(m.start, S.tz), "datetime-local", "required")}${f(A.end, "end", utcToInput(m.end, S.tz), "datetime-local")}
+      ${f(A.hs, "homeScore", m.homeScore ?? "", "number")}${f(A.as, "awayScore", m.awayScore ?? "", "number")}${f(A.ph, "penH", m.penH ?? "", "number")}${f(A.pa, "penA", m.penA ?? "", "number")}
+      ${f(A.channel, "channel", m.channel ?? "")}${f(A.comm, "commentator", m.commentator ?? "")}
+      <label class="full">${A.servers}<textarea name="servers" rows="3">${esc(srv)}</textarea></label>
+      <div class="full"><button class="btn">${A.save}</button></div></form>
+      <table class="tbl">${[...D.matches].sort((a, b) => +new Date(b.start) - +new Date(a.start)).map(x => `<tr><td>${esc(nm(byId(D.teams, x.home)))} - ${esc(nm(byId(D.teams, x.away)))}</td>
+        <td>${new Date(x.start).toLocaleString("sv", { timeZone: S.tz }).slice(0, 16)}</td><td>${t(status(x))}</td>
+        <td><button class="btn alt" data-e="${x.id}">${A.edit}</button> <button class="btn dng" data-d="${x.id}">${A.del}</button></td></tr>`).join("")}</table>`;
+    $("#f").onsubmit = e => {
+      e.preventDefault();
+      const v = Object.fromEntries(new FormData(e.target));
+      const num = k => v[k] === "" ? undefined : +v[k];
+      const rec = { id: editing?.id ?? nextId(D.matches), league: +v.league, home: +v.home, away: +v.away,
+        start: new Date(inputToUtc(v.start, S.tz)).toISOString(), end: v.end ? new Date(inputToUtc(v.end, S.tz)).toISOString() : "",
+        homeScore: num("homeScore"), awayScore: num("awayScore"), penH: num("penH"), penA: num("penA"), channel: v.channel, commentator: v.commentator,
+        servers: v.servers.split("\n").map(l => l.trim()).filter(Boolean).map(l => { const [n, ...u] = l.split("|"); return u.length ? { name: n.trim(), url: u.join("|").trim() } : { name: "", url: n.trim() }; }) };
+      D.matches = editing ? D.matches.map(x => x.id === rec.id ? rec : x) : [...D.matches, rec];
+      editing = null; persist(); show();
+    };
+    document.querySelectorAll("[data-e]").forEach(b => b.onclick = () => { editing = D.matches.find(x => x.id == b.dataset.e); show(); });
+    document.querySelectorAll("[data-d]").forEach(b => b.onclick = () => { if (confirm(A.confirm)) { D.matches = D.matches.filter(x => x.id != b.dataset.d); persist(); show(); } });
+  }
+
+  function news() {
+    const o = editing ?? {};
+    D.news ||= [];
+    $("#body").innerHTML = `<form id="f" class="grid">${f(A.ttl, "title", o.title ?? "", "text", "required")}${f(A.ttlEn, "titleEn", o.titleEn ?? "")}${f(A.img, "image", o.image ?? "", "url")}
+      <label>${A.card}<select name="matchId"><option value="">—</option>${D.matches.map(m => `<option value="${m.id}" ${m.id == o.matchId ? "selected" : ""}>${esc(nm(byId(D.teams, m.home)))} - ${esc(nm(byId(D.teams, m.away)))}</option>`).join("")}</select></label>
+      <label class="full">${A.body}<textarea name="body" rows="4">${esc(o.body ?? "")}</textarea></label>
+      <label class="full">${A.bodyEn}<textarea name="bodyEn" rows="4">${esc(o.bodyEn ?? "")}</textarea></label>
+      <div class="full"><button class="btn">${A.save}</button></div></form>
+      <table class="tbl">${D.news.map(x => `<tr><td>${esc(x.title)}</td><td><button class="btn alt" data-e="${x.id}">${A.edit}</button> <button class="btn dng" data-d="${x.id}">${A.del}</button></td></tr>`).join("")}</table>`;
+    $("#f").onsubmit = e => {
+      e.preventDefault();
+      const v = Object.fromEntries(new FormData(e.target));
+      const rec = { ...v, id: editing?.id ?? nextId(D.news), date: editing?.date ?? new Date().toISOString(), matchId: v.matchId ? +v.matchId : "" };
+      D.news = editing ? D.news.map(x => x.id === rec.id ? rec : x) : [...D.news, rec];
+      editing = null; persist(); show();
+    };
+    document.querySelectorAll("[data-e]").forEach(b => b.onclick = () => { editing = D.news.find(x => x.id == b.dataset.e); show(); });
+    document.querySelectorAll("[data-d]").forEach(b => b.onclick = () => { if (confirm(A.confirm)) { D.news = D.news.filter(x => x.id != b.dataset.d); persist(); show(); } });
+  }
+
+  const simple = key => () => {
+    const o = editing ?? {};
+    $("#body").innerHTML = `<form id="f" class="grid">${f(A.name, "name", o.name ?? "", "text", "required")}${f(A.nameEn, "nameEn", o.nameEn ?? "")}
+      ${key === "teams" ? f(A.logo, "logo", o.logo ?? "", "url") : ""}<div class="full"><button class="btn">${A.save}</button></div></form>
+      <table class="tbl">${D[key].map(x => `<tr><td>${esc(x.name)}</td><td>${esc(x.nameEn || "")}</td>
+        <td><button class="btn alt" data-e="${x.id}">${A.edit}</button> <button class="btn dng" data-d="${x.id}">${A.del}</button></td></tr>`).join("")}</table>`;
+    $("#f").onsubmit = e => {
+      e.preventDefault();
+      const rec = { id: editing?.id ?? nextId(D[key]), ...Object.fromEntries(new FormData(e.target)) };
+      D[key] = editing ? D[key].map(x => x.id === rec.id ? rec : x) : [...D[key], rec];
+      editing = null; persist(); show();
+    };
+    document.querySelectorAll("[data-e]").forEach(b => b.onclick = () => { editing = D[key].find(x => x.id == b.dataset.e); show(); });
+    document.querySelectorAll("[data-d]").forEach(b => b.onclick = () => { if (confirm(A.confirm)) { D[key] = D[key].filter(x => x.id != b.dataset.d); persist(); show(); } });
+  };
+
+  function settings() {
+    $("#body").innerHTML = `<form id="f" class="grid">
+      ${f(A.siteName, "siteName", S.siteName)}
+      ${f("Site URL (SEO, https://…/)", "siteUrl", S.siteUrl, "url")}
+      ${f("API URL (/api/data or https://…workers.dev)", "apiUrl", S.apiUrl)}${f("Description (EN)", "desc", S.desc)}${f("الوصف (AR)", "descAr", S.descAr)}
+      <label>${A.lang}<select name="lang"><option value="ar" ${S.lang === "ar" ? "selected" : ""}>العربية</option><option value="en" ${S.lang === "en" ? "selected" : ""}>English</option></select></label>
+      <label>${A.theme}<select name="theme"><option value="light" ${S.theme === "light" ? "selected" : ""}>Light</option><option value="dark" ${S.theme === "dark" ? "selected" : ""}>Dark</option></select></label>
+      ${f(A.brand, "brand", S.brand, "color")}${f(A.accent, "accent", S.accent, "color")}
+      <label>${A.tz}<select name="tz">${tzOpts(S.tz)}</select></label>
+      ${f(A.dur, "durationMin", S.durationMin, "number")}${f(A.soon, "soonMin", S.soonMin, "number")}${f(A.shift, "dayShift", S.dayShift, "number")}${f(A.page, "pageSize", S.pageSize, "number")}
+      ${f(A.homeUrl, "homeUrl", S.homeUrl)}
+      <div class="full"><b>${A.social}</b></div>${["x", "facebook", "youtube", "telegram"].map(k => f(k, "soc_" + k, S.social?.[k] ?? "", "url")).join("")}
+      <div class="full"><b>${A.countries}</b><div class="chk">${Object.keys(COUNTRIES).map(z => `<label><input type="checkbox" name="c_${z}" ${S.countries.includes(z) ? "checked" : ""}> ${COUNTRIES[z][L === "ar" ? 0 : 1]}</label>`).join("")}</div></div>
+      <label class="full">${A.adTop}<textarea name="adTop" rows="3">${esc(S.adTop)}</textarea></label>
+      <label class="full">${A.adBottom}<textarea name="adBottom" rows="3">${esc(S.adBottom)}</textarea></label>
+      <div class="full"><button class="btn">${A.save}</button></div></form>`;
+    $("#f").onsubmit = e => {
+      e.preventDefault();
+      const fd = new FormData(e.target), v = Object.fromEntries(fd);
+      ["durationMin", "soonMin", "dayShift", "pageSize"].forEach(k => v[k] = +v[k]);
+      v.social = Object.fromEntries(["x", "facebook", "youtube", "telegram"].map(k => [k, v["soc_" + k]]));
+      Object.keys(v).filter(k => k.startsWith("soc_")).forEach(k => delete v[k]);
+      v.countries = Object.keys(COUNTRIES).filter(z => fd.has("c_" + z));
+      Object.keys(v).filter(k => k.startsWith("c_")).forEach(k => delete v[k]);
+      S = { ...S, ...v }; delete UI.tz; saveUI(); persist(); alert("✓");
+    };
+  }
+
+  function data() {
+    $("#body").innerHTML = `<p><button class="btn" id="x">${A.exp}</button> <label class="btn alt">${A.imp}<input id="i" type="file" accept="application/json" hidden></label>
+      <button class="btn dng" id="r">${A.reset}</button></p>`;
+    $("#x").onclick = () => {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify({ ...D, settings: S }, null, 2)], { type: "application/json" }));
+      a.download = "data.json"; a.click();
+    };
+    $("#i").onchange = async e => { try { D = JSON.parse(await e.target.files[0].text()); S = { ...DEF, ...D.settings }; persist(); alert("✓"); } catch { alert("Invalid file"); } };
+    $("#r").onclick = () => { if (confirm(A.confirm)) { localStorage.removeItem("fl_data"); location.reload(); } };
+  }
+  show();
+})();
+</script>
+</body>
+</html>
