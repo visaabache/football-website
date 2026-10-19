@@ -170,7 +170,11 @@ async function refreshApi() {
 async function boot(opts = {}) {
   D = await loadData();
   S = { ...DEF, ...D.settings };
-  if (!opts.admin && !opts.static) { BASE = D; await refreshApi(); }
+  if (!opts.admin && !opts.static) {
+    BASE = D;
+    if (D.sample) D = { ...D, matches: [] }; // never show the demo matches to visitors, even if the API is unreachable
+    await refreshApi();
+  }
   const ql = new URLSearchParams(location.search).get("lang");
   if (ql === "ar" || ql === "en") { UI.lang = ql; saveUI(); }
   L = UI.lang || S.lang;

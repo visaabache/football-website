@@ -15,7 +15,7 @@
 (async () => {
   const q = new URLSearchParams(location.search);
   await boot({ embed: q.get("embed") === "1" });
-  const m = D.matches.find(x => x.id == q.get("id"));
+  let m = D.matches.find(x => x.id == q.get("id"));
   const main = $("#main");
   if (!m) { main.innerHTML = `<p class="empty card">${t("notfound")}</p><p><a href="index.html">${t("back")}</a></p>`; return; }
   const h = byId(D.teams, m.home), a = byId(D.teams, m.away), lg = byId(D.leagues, m.league);
@@ -30,7 +30,7 @@
   const dateStr = () => new Date(m.start).toLocaleDateString(locale(), { timeZone: TZ(), dateStyle: "full" });
   const tzName = () => COUNTRIES[TZ()] ? COUNTRIES[TZ()][L === "ar" ? 0 : 1] : TZ();
   const blurbTitle = () => L === "ar" ? `ملخص مباراة ${nm(h)} و${nm(a)}` : `${nm(h)} vs ${nm(a)}: match summary`;
-  function blurb(st, hasScore) {
+  function blurb(st) {
     const start = +new Date(m.start), hs = m.homeScore ?? 0, as = m.awayScore ?? 0;
     const pen = m.penH !== undefined && m.penH !== "" && m.penH !== null;
     if (L === "ar") {
@@ -43,21 +43,26 @@
     return `${nm(h)} meet ${nm(a)} in the ${nm(lg)} on ${dateStr()}. Kick-off is at ${fmtTime(start)} (${tzName()} time); the table below shows the time in other countries. The status and score update automatically once the match begins.`;
   }
 
-  function view() {
-    const st = status(m), start = +new Date(m.start);
-    const hasScore = m.homeScore !== undefined && m.homeScore !== "" && m.homeScore !== null;
-    const score = hasScore || st === "live" || st === "finished" ? `${esc(m.homeScore ?? 0)} - ${esc(m.awayScore ?? 0)}` : fmtTime(start);
+  const hasScore = () => m.homeScore !== undefined && m.homeScore !== "" && m.homeScore !== null;
+  function mid(st) {
+    const start = +new Date(m.start);
+    const score = hasScore() || st === "live" || st === "finished" ? `${esc(m.homeScore ?? 0)} - ${esc(m.awayScore ?? 0)}` : fmtTime(start);
     const pens = (m.penH !== undefined && m.penH !== "" && m.penH !== null) ? `<div class="pen">(${esc(m.penH)} - ${esc(m.penA)}) ${t("pens")}</div>` : "";
     const left = start - Date.now();
     const cd = left > 0 ? `<div class="cd">${t("startsIn")} ${Math.floor(left / 3600e3)}:${String(Math.floor(left % 3600e3 / 60000)).padStart(2, "0")}</div>` : "";
+    return `${score}${pens}<small class="st">${t(st)}</small>${cd}`;
+  }
+
+  function view() {
+    const st = status(m), start = +new Date(m.start);
     main.innerHTML = `<section class="card pad">
       <div class="league">${esc(nm(lg))}</div>
       <div class="hero ${st}"><div class="side">${badge(h)}<b>${esc(nm(h))}</b></div>
-        <div class="mid big">${score}${pens}<small class="st">${t(st)}</small>${cd}</div>
+        <div class="mid big" id="mid">${mid(st)}</div>
         <div class="side">${badge(a)}<b>${esc(nm(a))}</b></div></div>
       <div class="meta">${m.channel ? `<span>📺 ${t("channel")}: ${esc(m.channel)}</span>` : ""}${m.commentator ? `<span>🎙 ${t("commentator")}: ${esc(m.commentator)}</span>` : ""}
         <span>${new Date(start).toLocaleDateString(locale(), { timeZone: TZ(), dateStyle: "full" })} — ${fmtTime(start)}</span></div>
-      <section class="ptext"><h2>${blurbTitle()}</h2><p>${blurb(st, hasScore)}</p></section>
+      <section class="ptext"><h2>${blurbTitle()}</h2><p id="blurb">${esc(blurb(st))}</p></section>
       ${S.adTop ? `<div class="ad">${S.adTop}</div>` : ""}
       <div class="player" id="player"></div>
       <div class="servers" id="servers"></div>
@@ -78,8 +83,19 @@
       load(0);
     } else pl.hidden = true; // no embedded stream: do not show an empty player
   }
-  let last = status(m); view();
-  setInterval(() => { const s = status(m); if (s !== last) { last = s; view(); } }, 15000);
+  // Re-render fully only when the status changes (it shows/hides the player); otherwise just swap the score so a
+  // playing stream is not reloaded.
+  let last = status(m), lastScore = scoreKey(); view();
+  function scoreKey() { return [m.homeScore, m.awayScore, m.penH, m.penA].join(); }
+  function tick() {
+    const s = status(m), k = scoreKey();
+    if (s !== last) { last = s; lastScore = k; view(); return; }
+    if (k === lastScore) return;
+    lastScore = k;
+    $("#mid").innerHTML = mid(s); $("#blurb").textContent = blurb(s);
+  }
+  setInterval(tick, 15000);
+  setInterval(async () => { await refreshApi(); m = D.matches.find(x => x.id == m.id) || m; tick(); }, 60000);
 })();
 </script>
 </body>

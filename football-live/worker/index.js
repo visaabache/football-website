@@ -47,24 +47,54 @@ function mapAF(f) {
     _h: { id: "af-t" + f.teams.home.id, name: f.teams.home.name, nameEn: f.teams.home.name, logo: f.teams.home.logo },
     _a: { id: "af-t" + f.teams.away.id, name: f.teams.away.name, nameEn: f.teams.away.name, logo: f.teams.away.logo } };
 }
-// Free plan = 100 requests/day AND a small per-minute limit, so each run makes at most ONE call:
-// today's fixtures every 20 min (72/day), then yesterday and tomorrow once every 3 h each (16/day).
+// Free plan = 100 requests/day (reset 00:00 UTC) AND a small per-minute limit, so each run makes at most ONE call.
+// The budget is spent where it matters: a day with a match in play is re-fetched every few minutes (interval sized so the
+// budget lasts until midnight), today otherwise every 2 h, yesterday and tomorrow every 6 h.
+const AF_SPARE = 5, AF_IDLE = 2 * 3600e3, AF_SIDE = 6 * 3600e3, AF_MIN = 4 * 60e3, AF_MAX = 30 * 60e3, MATCH_MS = 130 * 60e3;
+const afOpen = m => m.apiStatus !== "FINISHED" && m.apiStatus !== "POSTPONED";
+// A match still marked in play 4 h after kick-off is a stale record, not a live game.
+const afPlaying = m => (m.apiStatus === "IN_PLAY" || m.apiStatus === "PAUSED") && Date.now() - Date.parse(m.start) < 4 * 3600e3;
+const afLive = (m, now) => afPlaying(m) || afOpen(m) && Date.parse(m.start) <= now && now < Date.parse(m.start) + MATCH_MS;
+// Milliseconds before midnight UTC during which at least one match is (or will be) in play; overlapping matches count once.
+function afLiveMsLeft(store, now, midnight) {
+  const spans = Object.values(store).filter(afOpen).map(m => {
+    const s = Date.parse(m.start);
+    return [Math.max(now, s), Math.min(midnight, afPlaying(m) ? Math.max(s + MATCH_MS, now + 20 * 60e3) : s + MATCH_MS)];
+  }).filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  let total = 0, cur = 0;
+  for (const [a, b] of spans) { const s = Math.max(a, cur); if (b > s) total += b - s; cur = Math.max(cur, b); }
+  return total;
+}
 async function refreshAF(env) {
-  const now = Date.now();
+  const now = Date.now(), today = iso(now), midnight = Date.parse(iso(now + DAY));
   const meta = JSON.parse(await env.DATA.get("af_meta") || "{}");
   if (now < (meta.retry || 0)) return null; // backing off after an error
-  const day = now - (meta.today || 0) > 20 * 60e3 ? ["today", 0]
-    : now - (meta.yest || 0) > 3 * 3600e3 ? ["yest", -DAY]
-    : now - (meta.tomo || 0) > 3 * 3600e3 ? ["tomo", DAY] : null;
-  if (!day) return null; // throttled: nothing to do
+  if (meta.day !== today) Object.assign(meta, { day: today, used: 0 });
+  meta.f ||= {}; // last fetch time per date
+  const budget = (meta.limit || 100) - AF_SPARE; // keep a few calls spare for manual tests
+  if (meta.used >= budget) return null; // daily quota spent
   const store = JSON.parse(await env.DATA.get("af_store") || "{}");
-  const r = await fetch("https://v3.football.api-sports.io/fixtures?date=" + iso(now + day[1]), { headers: { "x-apisports-key": env.AF_KEY } });
+  const left = budget - meta.used, toGo = midnight - now;
+  const reserve = 2 * Math.ceil(toGo / AF_SIDE) + Math.ceil(toGo / AF_IDLE); // keep enough for the non-live refreshes
+  const liveEvery = Math.min(AF_MAX, Math.max(AF_MIN, afLiveMsLeft(store, now, midnight) / Math.max(1, left - reserve)));
+  const live = new Set(Object.values(store).filter(m => afLive(m, now)).map(m => iso(Date.parse(m.start))));
+  const date = [iso(now - DAY), today, iso(now + DAY)]
+    .map(d => [d, now - (meta.f[d] || 0) - (live.has(d) ? liveEvery : d === today ? AF_IDLE : AF_SIDE)])
+    .filter(([, over]) => over >= 0).sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!date) return null; // throttled: nothing to do
+  meta.used++;
+  const r = await fetch("https://v3.football.api-sports.io/fixtures?date=" + date, { headers: { "x-apisports-key": env.AF_KEY } });
+  // The API reports what is really left today (also counts calls made outside this Worker).
+  const rem = parseInt(r.headers.get("x-ratelimit-requests-remaining"), 10), lim = parseInt(r.headers.get("x-ratelimit-requests-limit"), 10);
+  if (rem >= 0 && lim > 0) Object.assign(meta, { limit: lim, used: Math.max(meta.used, lim - rem) });
   const j = r.ok ? await r.json() : {};
   const err = !r.ok ? "HTTP " + r.status : j.errors && Object.keys(j.errors).length ? JSON.stringify(j.errors).slice(0, 200) : "";
   if (err) { await env.DATA.put("af_meta", JSON.stringify({ ...meta, retry: now + 3 * 60e3 })); throw new Error("API-Football: " + err); }
   for (const f of j.response || []) if (AF_LEAGUES.has(f.league.id)) store[f.fixture.id] = mapAF(f);
   for (const k of Object.keys(store)) if (now - Date.parse(store[k].start) > 3 * DAY) delete store[k];
-  await env.DATA.put("af_meta", JSON.stringify({ ...meta, [day[0]]: now, retry: 0 }));
+  for (const d of Object.keys(meta.f)) if (now - meta.f[d] > 3 * DAY) delete meta.f[d];
+  meta.f[date] = now; meta.retry = 0;
+  await env.DATA.put("af_meta", JSON.stringify(meta));
   await env.DATA.put("af_store", JSON.stringify(store));
   const list = Object.values(store), leagues = new Map(), teams = new Map();
   const matches = list.map(({ _l, _h, _a, ...m }) => { leagues.set(_l.id, _l); teams.set(_h.id, _h); teams.set(_a.id, _a); return m; });
@@ -84,7 +114,9 @@ async function refresh(env) {
   return d;
 }
 
-const STALE_MS = 3 * 60e3;
+// API-Football data can legitimately sit unchanged for hours between fetches, so only step in when the cron looks dead;
+// otherwise every visit would write a KV lock and use up the free plan's ~1000 writes/day.
+const staleMs = env => env.AF_KEY ? 3 * 3600e3 : 3 * 60e3;
 const track = env => e => env.DATA.put("error", new Date().toISOString() + " " + (e && e.message || e));
 let inflight = null; // one refresh at a time per Worker instance
 
@@ -97,7 +129,7 @@ export default {
     else {
       // Cron backup: if the cached data is older than a few minutes, refresh in the background (one at a time, via a short-lived lock).
       const age = Date.now() - Date.parse(JSON.parse(body).updated || 0);
-      if (age > STALE_MS && !inflight) {
+      if (age > staleMs(env) && !inflight) {
         inflight = (async () => {
           if (await env.DATA.get("lock")) return; // another instance is already refreshing
           await env.DATA.put("lock", "1", { expirationTtl: 120 });
